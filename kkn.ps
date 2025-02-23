@@ -1,0 +1,68 @@
+k = input(3, title="Number of nearest neighbors")
+distanceMetric = input("Euclidean", title="Distance metric")
+trainingDataSize = input(1000, title="Training data size")
+
+// Calculate features for training data
+openPrices = security(syminfo.tickerid, 'D', open)
+highPrices = security(syminfo.tickerid, 'D', high)
+lowPrices = security(syminfo.tickerid, 'D', low)
+closePrices = security(syminfo.tickerid, 'D', close)
+volumeBars = security(syminfo.tickerid, 'D', volume)
+
+featureMatrix = concat(openPrices, highPrices, lowPrices, closePrices, volumeBars)
+featureVectors = array_concat(array_split(featureMatrix, trainingDataSize))
+labels = array_concat(array_split(closePrices > openPrices ? 1 : -1, trainingDataSize))
+
+// Initialize arrays to store test feature vectors and labels
+testFeatureVector = array_new_float(5)
+testLabel = na
+
+// Function to calculate distance between two feature vectors using specified metric
+f_calculateDistance(_a, _b, _metric) =>
+    if (_metric == "Euclidean")
+        sqrt(reduce(sum, map(x, y -> pow(x - y, 2), _a, _b)))
+    else
+        na
+
+// Function to find k nearest neighbors
+f_findKNearestNeighbors(_queryVector, _database, _distances, _k) =>
+    distances = array_sort(_distances, order.descending)
+    neighbors = array_slice(_database, 0, _k)
+    for i = _k + 1 to array_size(_distances)-1
+        if (distances[i] >= distances[_k])
+            break
+        neighbors.push(database[_k+1])
+        
+    neighbors
+
+// Main function to predict trend direction based on KNN classification
+f_predictTrendDirection() =>
+    // Collect current feature vector and label
+    testFeatureVector := array_shift(featureVectors)
+    testLabel := array_shift(labels)
+    
+    // Compute distances from query vector to all other vectors in database
+    distances = array_map(x -> f_calculateDistance(x, testFeatureVector, distanceMetric), featureVectors)
+    
+    // Find k nearest neighbors
+    knnResult = f_findKNearestNeighbors(testFeatureVector, featureVectors, distances, k)
+    
+    // Majority vote among k nearest neighbors to determine predicted label
+    prediction = int(na)
+    majorityCount = 0
+    for neighbor in knnResult
+        if (prediction == na || neighbor == prediction)
+            prediction := neighbor
+            majorityCount += 1
+        else if (majorityCount > floor((k+1)/2))
+            break
+        
+    // Return predicted trend direction (-1=downtrend, 1=uptrend)
+    if (prediction == testLabel)
+        1
+    else
+        -1
+
+// Plot arrows indicating trend predictions
+plotshape(series=f_predictTrendDirection(), style=shape.labelup, location=location.belowbar, color=color.green, text="Uptrend")
+plotshape(series=-f_predictTrendDirection(), style=shape.labeldown, location=location.abovebar, color=color.red, text="Downtrend")

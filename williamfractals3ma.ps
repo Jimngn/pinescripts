@@ -1,0 +1,86 @@
+//@version=5
+strategy("Williams Fractals + 3MA Strategy", shorttitle="Fractals + 3MA Strategy", overlay=true)
+
+// Define "n" as the number of periods and keep a minimum value of 2 for error handling.
+n = input.int(title="Periods", defval=2, minval=2)
+
+a = input(true, title="Enable 2nd MA")
+b = input(true, title="Enable 3rd MA")
+
+len = input.int(20, title="Length", minval=1)
+len2 = input.int(50, title="Length2", minval=1)
+len3 = input.int(100, title="Length3", minval=1)
+
+src = input(close, title="Source")
+src2 = input(close, title="Source2")
+src3 = input(close, title="Source3")
+
+out = ta.sma(src, len)
+out2 = ta.sma(src2, len2)
+out3 = ta.sma(src3, len3)
+
+// Function to check if MAs haven't touched in the last 20 bars
+maNotCrossedInLastBars() =>
+    notCrossed = true
+    for i = 0 to 1
+        notCrossed := notCrossed and not (ta.cross(out[i], out2[i]) or ta.cross(out[i], out3[i]) or ta.cross(out2[i], out3[i]))
+    notCrossed
+
+// UpFractal calculation
+
+bool upflagDownFrontier = true
+bool upflagUpFrontier0 = true
+bool upflagUpFrontier1 = true
+bool upflagUpFrontier2 = true
+bool upflagUpFrontier3 = true
+bool upflagUpFrontier4 = true
+
+for i = 1 to n
+    upflagDownFrontier := upflagDownFrontier and (high[n-i] < high[n])
+    upflagUpFrontier0 := upflagUpFrontier0 and (high[n+i] < high[n])
+    upflagUpFrontier1 := upflagUpFrontier1 and (high[n+1] <= high[n] and high[n+i + 1] < high[n])
+    upflagUpFrontier2 := upflagUpFrontier2 and (high[n+1] <= high[n] and high[n+2] <= high[n] and high[n+i + 2] < high[n])
+    upflagUpFrontier3 := upflagUpFrontier3 and (high[n+1] <= high[n] and high[n+2] <= high[n] and high[n+3] <= high[n] and high[n+i + 3] < high[n])
+    upflagUpFrontier4 := upflagUpFrontier4 and (high[n+1] <= high[n] and high[n+2] <= high[n] and high[n+3] <= high[n] and high[n+4] <= high[n] and high[n+i + 4] < high[n])
+flagUpFrontier = upflagUpFrontier0 or upflagUpFrontier1 or upflagUpFrontier2 or upflagUpFrontier3 or upflagUpFrontier4
+
+upFractal = (upflagDownFrontier and flagUpFrontier)
+
+// DownFractal calculation
+bool downflagDownFrontier = true
+bool downflagUpFrontier0 = true
+bool downflagUpFrontier1 = true
+bool downflagUpFrontier2 = true
+bool downflagUpFrontier3 = true
+bool downflagUpFrontier4 = true
+
+for i = 1 to n
+    downflagDownFrontier := downflagDownFrontier and (low[n-i] > low[n])
+    downflagUpFrontier0 := downflagUpFrontier0 and (low[n+i] > low[n])
+    downflagUpFrontier1 := downflagUpFrontier1 and (low[n+1] >= low[n] and low[n+i + 1] > low[n])
+    downflagUpFrontier2 := downflagUpFrontier2 and (low[n+1] >= low[n] and low[n+2] >= low[n] and low[n+i + 2] > low[n])
+    downflagUpFrontier3 := downflagUpFrontier3 and (low[n+1] >= low[n] and low[n+2] >= low[n] and low[n+3] >= low[n] and low[n+i + 3] > low[n])
+    downflagUpFrontier4 := downflagUpFrontier4 and (low[n+1] >= low[n] and low[n+2] >= low[n] and low[n+3] >= low[n] and low[n+4] >= low[n] and low[n+i + 4] > low[n])
+flagDownFrontier = downflagUpFrontier0 or downflagUpFrontier1 or downflagUpFrontier2 or downflagUpFrontier3 or downflagUpFrontier4
+
+downFractal = (downflagDownFrontier and flagDownFrontier)
+
+// Plot fractals
+plotshape(downFractal, style=shape.triangledown, location=location.belowbar, offset=-n, color=#F44336, size = size.small)
+plotshape(upFractal, style=shape.triangleup,   location=location.abovebar, offset=-n, color=#009688, size = size.small)
+plot(out, title="SMA", color=color.red)
+plot(a and out2 ? out2 : na, title="SMA2", color=color.green)
+plot(b and out3 ? out3 : na, title="SMA3", color=color.blue)
+
+// Trading conditions
+longCondition = maNotCrossedInLastBars() and (close < out or close < out2) and upFractal
+shortCondition = maNotCrossedInLastBars() and (close > out or close > out2) and downFractal
+
+// Entry and exit logic
+if (longCondition)
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Exit Long", "Long", stop=out3, limit=close + (close - out3) * 1.5)
+
+if (shortCondition)
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Exit Short", "Short", stop=out3, limit=close - (out3 - close) * 1.5)
